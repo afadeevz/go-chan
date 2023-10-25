@@ -1,6 +1,10 @@
 package chan2
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/zyedidia/generic/queue"
+)
 
 type RChan[T any] interface {
 	Read() T
@@ -15,6 +19,10 @@ type Chan[T any] interface {
 	WChan[T]
 }
 
+type queueElem[T any] struct {
+	wg  *sync.WaitGroup
+	val *T
+}
 type chanImpl[T any] struct {
 	buf      []T
 	capacity uint
@@ -22,9 +30,10 @@ type chanImpl[T any] struct {
 	recvIdx  uint
 	sendIdx  uint
 
-	mu       *sync.Mutex
-	recvCond sync.Cond
-	sendCond sync.Cond
+	mu *sync.Mutex
+
+	recvq *queue.Queue[queueElem[T]]
+	sendq *queue.Queue[queueElem[T]]
 }
 
 func New[T any](capacity uint) Chan[T] {
@@ -33,40 +42,73 @@ func New[T any](capacity uint) Chan[T] {
 		mu:       &mu,
 		buf:      make([]T, capacity),
 		capacity: capacity,
-		recvCond: *sync.NewCond(&mu),
-		sendCond: *sync.NewCond(&mu),
+		recvq:    queue.New[queueElem[T]](),
+		sendq:    queue.New[queueElem[T]](),
 	}
 }
 
 func (ch *chanImpl[T]) Read() T {
-	defer ch.sendCond.Signal()
-
 	ch.mu.Lock()
-	defer ch.mu.Unlock()
 
-	for ch.size == 0 {
-		ch.recvCond.Wait()
+	if ch.size > 0 {
+		ret := ch.buf[ch.recvIdx]
+		ch.recvIdx++
+		ch.recvIdx %= ch.capacity
+		ch.size--
+		ch.mu.Unlock()
+		return ret
 	}
 
-	ret := ch.buf[ch.recvIdx]
-	ch.recvIdx++
-	ch.recvIdx %= ch.capacity
-	ch.size--
+	if !ch.sendq.Empty() {
+		elem := ch.sendq.Dequeue()
+		ch.mu.Unlock()
+
+		ret := elem.val
+		elem.wg.Done()
+		return *ret
+	}
+
+	var ret T
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ch.recvq.Enqueue(queueElem[T]{
+		wg:  &wg,
+		val: &ret,
+	})
+	ch.mu.Unlock()
+
+	wg.Wait()
 	return ret
 }
 
 func (ch *chanImpl[T]) Write(val T) {
-	defer ch.recvCond.Signal()
-
 	ch.mu.Lock()
-	defer ch.mu.Unlock()
 
-	for ch.size == ch.capacity {
-		ch.sendCond.Wait()
+	if !ch.recvq.Empty() {
+		elem := ch.recvq.Dequeue()
+		ch.mu.Unlock()
+
+		*elem.val = val
+		elem.wg.Done()
+		return
 	}
 
-	ch.buf[ch.sendIdx] = val
-	ch.sendIdx++
-	ch.sendIdx %= ch.capacity
-	ch.size++
+	if ch.size < ch.capacity {
+		ch.buf[ch.sendIdx] = val
+		ch.sendIdx++
+		ch.sendIdx %= ch.capacity
+		ch.size++
+		ch.mu.Unlock()
+		return
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ch.sendq.Enqueue(queueElem[T]{
+		wg:  &wg,
+		val: &val,
+	})
+	ch.mu.Unlock()
+
+	wg.Wait()
 }
