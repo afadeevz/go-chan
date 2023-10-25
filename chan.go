@@ -44,7 +44,7 @@ func (ch *chanImpl[T]) Read() T {
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
 
-	if ch.size == 0 {
+	for ch.size == 0 {
 		ch.recvCond.Wait()
 	}
 
@@ -61,7 +61,7 @@ func (ch *chanImpl[T]) Write(val T) {
 	ch.mu.Lock()
 	defer ch.mu.Unlock()
 
-	if ch.size >= ch.capacity {
+	for ch.size == ch.capacity {
 		ch.sendCond.Wait()
 	}
 

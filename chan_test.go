@@ -40,3 +40,23 @@ func TestChanBufReadBlock(t *testing.T) {
 
 	assert.Equal(t, 1, ch.Read())
 }
+
+func TestChanBufMany(t *testing.T) {
+	ch := chan2.New[int](1)
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < 1<<10; i++ {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			ch.Read()
+		}()
+		go func() {
+			defer wg.Done()
+			ch.Write(0)
+		}()
+	}
+
+	wg.Wait()
+}
