@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	chan2 "github.com/afadeevz/go-chan"
+	chan2 "github.com/afadeevz/go-wheels/chan"
 	"github.com/stretchr/testify/assert"
 )
 

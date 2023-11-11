@@ -1,3 +1,4 @@
-# go-chan
+# go-wheels
 
-An attempt to recreate golang channels
+Reinventing the wheels in Go
+Изобретаем велоспеды на Go

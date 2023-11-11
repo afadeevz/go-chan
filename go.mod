@@ -1,4 +1,4 @@
-module github.com/afadeevz/go-chan
+module github.com/afadeevz/go-wheels
 
 go 1.21.1
 
